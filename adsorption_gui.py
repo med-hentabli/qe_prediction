@@ -170,24 +170,16 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
         
-        # Make prediction - handle GPU/CPU compatibility
+        # Make prediction - simplified approach
         try:
-            # First try with CPU configuration
-            import xgboost as xgb
-            
-            # Create DMatrix
-            dmatrix = xgb.DMatrix(input_df)
-            
-            # Set CPU-only configuration for prediction
-            config = {
-                'predictor': 'cpu_predictor',
-                'tree_method': 'hist',
-                'device': 'cpu'
-            }
-            
-            # Try to predict with configuration
-            prediction = xgb_model.predict(dmatrix, iteration_range=(0, xgb_model.best_iteration), **config)[0]
-            
+            # Try sklearn-style prediction first
+            if hasattr(xgb_model, 'predict'):
+                prediction = xgb_model.predict(input_df)[0]
+            # If that fails, try native Booster prediction
+            else:
+                import xgboost as xgb
+                dmatrix = xgb.DMatrix(input_df)
+                prediction = xgb_model.predict(dmatrix)[0]
         except Exception as e:
             st.error(f"Prediction failed: {str(e)}")
             st.stop()
@@ -243,5 +235,9 @@ try:
     import xgboost
     st.write(f"XGBoost version: {xgboost.__version__}")
     st.write(f"Model type: {type(xgb_model)}")
+    if hasattr(xgb_model, 'best_iteration'):
+        st.write(f"Model has best_iteration: {xgb_model.best_iteration}")
+    else:
+        st.write("Model does not have best_iteration attribute")
 except:
     st.write("XGBoost not available")
