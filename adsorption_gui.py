@@ -30,31 +30,9 @@ def load_model():
         xgb_version = xgboost.__version__
         st.info(f"Using XGBoost version: {xgb_version}")
         
-        # Try loading model with compatibility fix
-        try:
-            model = joblib.load("best_model_XGB.joblib")
-            
-            # If model is a Booster, convert to sklearn interface
-            if hasattr(model, 'save_model'):
-                st.warning("Model is native XGBoost Booster - converting to sklearn API")
-                from xgboost import XGBRegressor
-                new_model = XGBRegressor()
-                new_model._Booster = model
-                model = new_model
-            
-            return model
-        except Exception as e:
-            st.error(f"Initial loading failed: {str(e)}")
-            
-            # Try loading with pickle (fallback)
-            try:
-                st.warning("Trying fallback loading with pickle")
-                import pickle
-                with open("best_model_XGB.joblib", 'rb') as f:
-                    return pickle.load(f)
-            except Exception as pe:
-                st.error(f"Fallback loading failed: {str(pe)}")
-                raise pe
+        # Load model
+        model = joblib.load("best_model_XGB.joblib")
+        return model
                 
     except ImportError:
         st.error("XGBoost package not found! Please add 'xgboost' to requirements.txt")
@@ -191,15 +169,19 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
         
-        # Make prediction
-        # Handle different model types
-        if hasattr(xgb_model, 'predict'):
+        # Make prediction - handle different model types
+        try:
+            # Try sklearn-style prediction first
             prediction = xgb_model.predict(input_df)[0]
-        elif hasattr(xgb_model, 'predict_proba'):
-            prediction = xgb_model.predict_proba(input_df)[0][1]
-        else:
-            st.error("Model doesn't have predict method")
-            st.stop()
+        except Exception as e:
+            try:
+                # If that fails, try native Booster prediction
+                import xgboost as xgb
+                dmatrix = xgb.DMatrix(input_df)
+                prediction = xgb_model.predict(dmatrix)[0]
+            except Exception as e2:
+                st.error(f"Both prediction methods failed: {str(e)} AND {str(e2)}")
+                st.stop()
         
         # Display results
         st.success(f"Predicted Adsorption Capacity: **{prediction:.2f} mg/g**")
@@ -251,5 +233,6 @@ st.write(f"Python version: {sys.version}")
 try:
     import xgboost
     st.write(f"XGBoost version: {xgboost.__version__}")
+    st.write(f"Model type: {type(xgb_model)}")
 except:
     st.write("XGBoost not available")
