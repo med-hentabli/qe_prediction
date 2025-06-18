@@ -5,5 +5,5 @@ pandas==1.5.3
 joblib==1.2.0
 requests
 Pillow==9.5.0
-xgboost==1.6.2  # Try this first
+xgboost==1.5.0  # If 1.6.2 fails, try this
 scikit-learn==1.2.2
