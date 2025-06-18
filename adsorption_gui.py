@@ -27,7 +27,7 @@ def load_model():
         # First ensure we have xgboost
         import xgboost
         
-        # Check xgbosst version
+        # Check xgboost version
         xgb_version = xgboost.__version__
         st.info(f"Using XGBoost version: {xgb_version}")
         
@@ -162,16 +162,34 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
         
-        # Make prediction - simplified approach
+        # Make prediction - Force CPU mode
         try:
-            # Try direct prediction without any configuration
-            prediction = xgb_model.predict(input_df)[0]
+            import xgboost as xgb
+            
+            # Clone the model to avoid modifying the cached version
+            if hasattr(xgb_model, 'get_params'):
+                # For sklearn API models
+                params = xgb_model.get_params()
+                # Force CPU parameters
+                params['device'] = 'cpu'
+                params['tree_method'] = 'hist'
+                params['predictor'] = 'cpu_predictor'
+                
+                # Create a new model with CPU configuration
+                cpu_model = xgb.XGBRegressor(**params)
+                cpu_model.load_model("best_model_XGB.joblib")  # Reload weights with CPU config
+                prediction = cpu_model.predict(input_df)[0]
+            else:
+                # For native booster models
+                dmatrix = xgb.DMatrix(input_df)
+                prediction = xgb_model.predict(dmatrix)[0]
+                
         except Exception as e:
-            # If that fails, try converting to numpy array
+            # Fallback to simple prediction
             try:
-                prediction = xgb_model.predict(input_df.values)[0]
-            except Exception as e2:
-                st.error(f"Prediction failed: {str(e)} AND {str(e2)}")
+                prediction = xgb_model.predict(input_df)[0]
+            except:
+                st.error(f"Prediction failed: {str(e)}")
                 st.stop()
         
         # Display results
@@ -225,5 +243,7 @@ try:
     import xgboost
     st.write(f"XGBoost version: {xgboost.__version__}")
     st.write(f"Model type: {type(xgb_model)}")
+    if hasattr(xgb_model, 'get_params'):
+        st.write("Model parameters:", xgb_model.get_params())
 except:
     st.write("XGBoost not available")
