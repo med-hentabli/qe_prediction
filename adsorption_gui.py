@@ -12,54 +12,49 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors
 from rdkit.ML.Descriptors import MoleculeDescriptors
 import pandas as pd
-import joblib
 import requests
 from time import sleep
 import sys
 import numpy as np
 
-# 3. Load pre-trained XGBoost model
+# 3. Load pre-trained XGBoost model (CPU-safe)
 @st.cache_resource
 def load_model():
     try:
-        import xgboost
-        st.info(f"Using XGBoost version: {xgboost.__version__}")
-        model = joblib.load("best_model_XGB.joblib")
+        import xgboost as xgb
+        st.info(f"Using XGBoost version: {xgb.__version__}")
+        model = xgb.XGBRegressor(tree_method='hist', predictor='cpu_predictor')
+        model.load_model("best_model_XGB_cpu.json")  # CPU-safe format
         return model
     except ImportError:
-        st.error("XGBoost package not found! Please add 'xgboost' to requirements.txt")
+        st.error("XGBoost not installed. Add it to requirements.txt")
         st.stop()
     except FileNotFoundError:
-        st.error("Model file not found! Please ensure 'best_model_XGB.joblib' is in the app directory.")
+        st.error("Model file 'best_model_XGB_cpu.json' not found in app directory.")
         st.stop()
     except Exception as e:
-        st.error(f"Critical error loading model: {str(e)}")
+        st.error(f"Failed to load model: {str(e)}")
         st.stop()
 
 xgb_model = load_model()
 
-# 4. Set up descriptor calculator
+# 4. Descriptor calculator setup
 required_descriptors = ['fr_nitro', 'PEOE_VSA12', 'PEOE_VSA2', 'EState_VSA2']
 calculator = MoleculeDescriptors.MolecularDescriptorCalculator(required_descriptors)
 
-# 5. Session state setup
+# 5. Initialize session state
 def init_session():
-    defaults = {
-        'smiles_value': "CC(=O)NC1=CC=C(C=C1)O",  # Paracetamol
-        'run_prediction': False,
-        'last_searched': ""
-    }
-    for key, val in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = val
+    st.session_state.setdefault('smiles_value', "CC(=O)NC1=CC=C(C=C1)O")  # Paracetamol
+    st.session_state.setdefault('run_prediction', False)
+    st.session_state.setdefault('last_searched', "")
 
 init_session()
 
-# 6. App Interface
+# 6. App Title and Intro
 st.title("\U0001F9EA Adsorption Capacity Predictor")
 st.markdown("Predict Qe (mg/g) using molecular descriptors and process conditions")
 
-# 7. Sidebar Inputs
+# 7. Sidebar Input Section
 with st.sidebar:
     st.header("\u2697\ufe0f Input Parameters")
 
@@ -77,20 +72,17 @@ with st.sidebar:
                     response = requests.get(url)
                     if response.status_code == 200:
                         data = response.json()
-                        if 'PropertyTable' in data and 'Properties' in data['PropertyTable']:
-                            smiles = data['PropertyTable']['Properties'][0]['CanonicalSMILES']
-                            st.session_state.smiles_value = smiles
-                            st.session_state.last_searched = molecule_name
-                            st.success(f"Found SMILES: {smiles}")
-                        else:
-                            st.error("No properties found for the molecule.")
+                        smiles = data['PropertyTable']['Properties'][0]['CanonicalSMILES']
+                        st.session_state.smiles_value = smiles
+                        st.session_state.last_searched = molecule_name
+                        st.success(f"Found SMILES: {smiles}")
                     else:
-                        st.error(f"Molecule not found (HTTP {response.status_code}).")
+                        st.error("Molecule not found in PubChem.")
                 except Exception as e:
                     st.error(f"Search failed: {str(e)}")
                 sleep(0.5)
         else:
-            st.info("Using previously found SMILES for this molecule.")
+            st.info("Using previously found SMILES.")
 
     if use_for_prediction:
         st.session_state.run_prediction = True
@@ -112,10 +104,9 @@ with st.sidebar:
 if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
     try:
         st.session_state.run_prediction = False
-
         mol = Chem.MolFromSmiles(smiles)
         if not mol:
-            st.error("Invalid SMILES structure. Please check your input.")
+            st.error("Invalid SMILES structure.")
             st.stop()
 
         desc_values = calculator.CalcDescriptors(mol)
@@ -131,17 +122,8 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
 
-        # Remove unsafe GPU attributes if present
-        if hasattr(xgb_model, 'gpu_id'):
-            del xgb_model.gpu_id
-        if hasattr(xgb_model, 'n_gpus'):
-            del xgb_model.n_gpus
-        if hasattr(xgb_model, '_Booster') and hasattr(xgb_model._Booster, 'gpu_id'):
-            del xgb_model._Booster.gpu_id
-
         prediction = xgb_model.predict(input_df)[0]
         st.success(f"Predicted Adsorption Capacity: **{prediction:.2f} mg/g**")
-        st.markdown("---")
 
         with st.expander("View Input Details"):
             st.write("**Molecular Descriptors:**")
