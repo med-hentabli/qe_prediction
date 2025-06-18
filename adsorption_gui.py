@@ -16,15 +16,46 @@ import joblib
 import requests  # For PubChem API access
 import os  # For environment variables
 from time import sleep  # For API rate limiting
+import sys  # For version info
 
 # 3. Load pre-trained XGBoost model - using relative path
 # Create a function with caching for model loading
 @st.cache_resource
 def load_model():
     try:
+        # First ensure we have xgboost
         import xgboost
-        # Simple loading without safe parameter
-        return joblib.load("best_model_XGB.joblib")
+        
+        # Check xgboost version
+        xgb_version = xgboost.__version__
+        st.info(f"Using XGBoost version: {xgb_version}")
+        
+        # Try loading model with compatibility fix
+        try:
+            model = joblib.load("best_model_XGB.joblib")
+            
+            # If model is a Booster, convert to sklearn interface
+            if hasattr(model, 'save_model'):
+                st.warning("Model is native XGBoost Booster - converting to sklearn API")
+                from xgboost import XGBRegressor
+                new_model = XGBRegressor()
+                new_model._Booster = model
+                model = new_model
+            
+            return model
+        except Exception as e:
+            st.error(f"Initial loading failed: {str(e)}")
+            
+            # Try loading with pickle (fallback)
+            try:
+                st.warning("Trying fallback loading with pickle")
+                import pickle
+                with open("best_model_XGB.joblib", 'rb') as f:
+                    return pickle.load(f)
+            except Exception as pe:
+                st.error(f"Fallback loading failed: {str(pe)}")
+                raise pe
+                
     except ImportError:
         st.error("XGBoost package not found! Please add 'xgboost' to requirements.txt")
         st.stop()
@@ -33,6 +64,8 @@ def load_model():
         st.stop()
     except Exception as e:
         st.error(f"Critical error loading model: {str(e)}")
+        st.debug(f"Python version: {sys.version}")
+        st.debug(f"XGBoost version: {xgb_version if 'xgb_version' in locals() else 'N/A'}")
         st.stop()
 
 xgb_model = load_model()
@@ -96,7 +129,7 @@ with st.sidebar:
             st.info("Using previously found SMILES for this molecule.")
     
     if use_for_prediction:
-        st.session_state.run_prediction = True  # Fixed typo here
+        st.session_state.run_prediction = True
         st.success("SMILES loaded for prediction!")
     
     # SMILES input (now connected to session state)
@@ -130,21 +163,10 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             st.error("Invalid SMILES structure. Please check your input.")
             st.stop()
             
-        # Add chemical structure visualization - UPDATED APPROACH
+        # Add chemical structure visualization
         try:
             from rdkit.Chem import Draw
-            from rdkit.Chem.Draw import rdMolDraw2D
-            from PIL import Image
-            import io
-            
-            # Create a molecule drawing
-            drawer = rdMolDraw2D.MolDraw2DCairo(300, 200)
-            drawer.DrawMolecule(mol)
-            drawer.FinishDrawing()
-            
-            # Get PNG data and convert to image
-            png_data = drawer.GetDrawingText()
-            img = Image.open(io.BytesIO(png_data))
+            img = Draw.MolToImage(mol, size=(300, 200))
             st.image(img, caption="Chemical Structure")
         except Exception as e:
             st.warning("Could not display molecular structure")
@@ -170,7 +192,14 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
         ])
         
         # Make prediction
-        prediction = xgb_model.predict(input_df)[0]
+        # Handle different model types
+        if hasattr(xgb_model, 'predict'):
+            prediction = xgb_model.predict(input_df)[0]
+        elif hasattr(xgb_model, 'predict_proba'):
+            prediction = xgb_model.predict_proba(input_df)[0][1]
+        else:
+            st.error("Model doesn't have predict method")
+            st.stop()
         
         # Display results
         st.success(f"Predicted Adsorption Capacity: **{prediction:.2f} mg/g**")
@@ -190,8 +219,6 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             
     except Exception as e:
         st.error(f"Prediction failed: {str(e)}")
-        # Add debug info for prediction errors
-        st.debug(f"Model type: {type(xgb_model)}")
 
 # 8. Add explanatory section
 st.markdown("---")
@@ -216,3 +243,13 @@ st.write("""
 4. Click **Use for Prediction** to run prediction with imported SMILES
 5. Adjust process conditions as needed
 """)
+
+# 10. Add debug info
+st.markdown("---")
+st.subheader("Debug Information")
+st.write(f"Python version: {sys.version}")
+try:
+    import xgboost
+    st.write(f"XGBoost version: {xgboost.__version__}")
+except:
+    st.write("XGBoost not available")
