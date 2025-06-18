@@ -131,6 +131,14 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
 
+        # Remove unsafe GPU attributes if present
+        if hasattr(xgb_model, 'gpu_id'):
+            del xgb_model.gpu_id
+        if hasattr(xgb_model, 'n_gpus'):
+            del xgb_model.n_gpus
+        if hasattr(xgb_model, '_Booster') and hasattr(xgb_model._Booster, 'gpu_id'):
+            del xgb_model._Booster.gpu_id
+
         prediction = xgb_model.predict(input_df)[0]
         st.success(f"Predicted Adsorption Capacity: **{prediction:.2f} mg/g**")
         st.markdown("---")
