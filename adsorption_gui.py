@@ -27,7 +27,7 @@ def load_model():
         # First ensure we have xgboost
         import xgboost
         
-        # Check xgboost version
+        # Check xgbosst version
         xgb_version = xgboost.__version__
         st.info(f"Using XGBoost version: {xgb_version}")
         
@@ -142,14 +142,6 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             st.error("Invalid SMILES structure. Please check your input.")
             st.stop()
             
-        # Add chemical structure visualization
-        try:
-            from rdkit.Chem import Draw
-            img = Draw.MolToImage(mol, size=(300, 200))
-            st.image(img, caption="Chemical Structure")
-        except Exception as e:
-            st.warning("Could not display molecular structure")
-            
         # Calculate descriptors
         desc_values = calculator.CalcDescriptors(mol)
         desc_dict = dict(zip(required_descriptors, desc_values))
@@ -170,28 +162,17 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
         
-        # Make prediction - comprehensive solution
+        # Make prediction - simplified approach
         try:
-            import xgboost as xgb
-            
-            # Set global CPU configuration
-            xgb.set_config(device='cpu', tree_method='hist', predictor='cpu_predictor')
-            
-            # Handle different model types
-            if hasattr(xgb_model, 'predict'):
-                # For sklearn API models
-                prediction = xgb_model.predict(input_df)[0]
-            elif hasattr(xgb_model, 'save_model'):
-                # For native Booster models
-                dmatrix = xgb.DMatrix(input_df)
-                prediction = xgb_model.predict(dmatrix)[0]
-            else:
-                # Fallback to generic prediction
-                prediction = xgb_model.predict(input_df)[0]
-                
+            # Try direct prediction without any configuration
+            prediction = xgb_model.predict(input_df)[0]
         except Exception as e:
-            st.error(f"Prediction failed: {str(e)}")
-            st.stop()
+            # If that fails, try converting to numpy array
+            try:
+                prediction = xgb_model.predict(input_df.values)[0]
+            except Exception as e2:
+                st.error(f"Prediction failed: {str(e)} AND {str(e2)}")
+                st.stop()
         
         # Display results
         st.success(f"Predicted Adsorption Capacity: **{prediction:.2f} mg/g**")
@@ -244,7 +225,5 @@ try:
     import xgboost
     st.write(f"XGBoost version: {xgboost.__version__}")
     st.write(f"Model type: {type(xgb_model)}")
-    if hasattr(xgb_model, 'get_params'):
-        st.write("Model parameters:", xgb_model.get_params())
 except:
     st.write("XGBoost not available")
