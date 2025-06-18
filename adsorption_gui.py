@@ -170,16 +170,25 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
         
-        # Make prediction - simplified approach
+        # Make prediction - comprehensive solution
         try:
-            # Try sklearn-style prediction first
+            import xgboost as xgb
+            
+            # Set global CPU configuration
+            xgb.set_config(device='cpu', tree_method='hist', predictor='cpu_predictor')
+            
+            # Handle different model types
             if hasattr(xgb_model, 'predict'):
+                # For sklearn API models
                 prediction = xgb_model.predict(input_df)[0]
-            # If that fails, try native Booster prediction
-            else:
-                import xgboost as xgb
+            elif hasattr(xgb_model, 'save_model'):
+                # For native Booster models
                 dmatrix = xgb.DMatrix(input_df)
                 prediction = xgb_model.predict(dmatrix)[0]
+            else:
+                # Fallback to generic prediction
+                prediction = xgb_model.predict(input_df)[0]
+                
         except Exception as e:
             st.error(f"Prediction failed: {str(e)}")
             st.stop()
@@ -235,9 +244,7 @@ try:
     import xgboost
     st.write(f"XGBoost version: {xgboost.__version__}")
     st.write(f"Model type: {type(xgb_model)}")
-    if hasattr(xgb_model, 'best_iteration'):
-        st.write(f"Model has best_iteration: {xgb_model.best_iteration}")
-    else:
-        st.write("Model does not have best_iteration attribute")
+    if hasattr(xgb_model, 'get_params'):
+        st.write("Model parameters:", xgb_model.get_params())
 except:
     st.write("XGBoost not available")
