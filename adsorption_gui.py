@@ -17,6 +17,7 @@ import requests  # For PubChem API access
 import os  # For environment variables
 from time import sleep  # For API rate limiting
 import sys  # For version info
+import numpy as np
 
 # 3. Load pre-trained XGBoost model - using relative path
 # Create a function with caching for model loading
@@ -169,19 +170,27 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             'Time (min)', 'ce(mg/L)'
         ])
         
-        # Make prediction - handle different model types
+        # Make prediction - handle GPU/CPU compatibility
         try:
-            # Try sklearn-style prediction first
-            prediction = xgb_model.predict(input_df)[0]
+            # First try with CPU configuration
+            import xgboost as xgb
+            
+            # Create DMatrix
+            dmatrix = xgb.DMatrix(input_df)
+            
+            # Set CPU-only configuration for prediction
+            config = {
+                'predictor': 'cpu_predictor',
+                'tree_method': 'hist',
+                'device': 'cpu'
+            }
+            
+            # Try to predict with configuration
+            prediction = xgb_model.predict(dmatrix, iteration_range=(0, xgb_model.best_iteration), **config)[0]
+            
         except Exception as e:
-            try:
-                # If that fails, try native Booster prediction
-                import xgboost as xgb
-                dmatrix = xgb.DMatrix(input_df)
-                prediction = xgb_model.predict(dmatrix)[0]
-            except Exception as e2:
-                st.error(f"Both prediction methods failed: {str(e)} AND {str(e2)}")
-                st.stop()
+            st.error(f"Prediction failed: {str(e)}")
+            st.stop()
         
         # Display results
         st.success(f"Predicted Adsorption Capacity: **{prediction:.2f} mg/g**")
