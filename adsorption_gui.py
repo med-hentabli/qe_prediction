@@ -22,10 +22,21 @@ from time import sleep  # For API rate limiting
 @st.cache_resource
 def load_model():
     try:
-        # Use relative path for deployment
-        return joblib.load("best_model_XGB.joblib")
+        import xgboost
+        # Try loading with safe mode first
+        try:
+            return joblib.load("best_model_XGB.joblib", safe=True)
+        except:
+            # Fallback to unsafe loading if safe mode fails
+            return joblib.load("best_model_XGB.joblib", safe=False)
+    except ImportError:
+        st.error("XGBoost package not found! Please add 'xgboost' to requirements.txt")
+        st.stop()
     except FileNotFoundError:
         st.error("Model file not found! Please ensure 'best_model_XGB.joblib' is in the app directory.")
+        st.stop()
+    except Exception as e:
+        st.error(f"Critical error loading model: {str(e)}")
         st.stop()
 
 xgb_model = load_model()
@@ -123,13 +134,25 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             st.error("Invalid SMILES structure. Please check your input.")
             st.stop()
             
-        # Add chemical structure visualization
+        # Add chemical structure visualization - UPDATED APPROACH
         try:
             from rdkit.Chem import Draw
-            img = Draw.MolToImage(mol, size=(300, 200))
+            from rdkit.Chem.Draw import rdMolDraw2D
+            from PIL import Image
+            import io
+            
+            # Create a molecule drawing
+            drawer = rdMolDraw2D.MolDraw2DCairo(300, 200)
+            drawer.DrawMolecule(mol)
+            drawer.FinishDrawing()
+            
+            # Get PNG data and convert to image
+            png_data = drawer.GetDrawingText()
+            img = Image.open(io.BytesIO(png_data))
             st.image(img, caption="Chemical Structure")
-        except:
-            st.info("Could not display molecular structure")
+        except Exception as e:
+            st.warning("Could not display molecular structure")
+            st.debug(f"Visualization error: {str(e)}")
             
         # Calculate descriptors
         desc_values = calculator.CalcDescriptors(mol)
@@ -172,6 +195,9 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             
     except Exception as e:
         st.error(f"Prediction failed: {str(e)}")
+        # Add debug info for prediction errors
+        st.debug(f"Model type: {type(xgb_model)}")
+        st.debug(f"Model attributes: {dir(xgb_model)}")
 
 # 8. Add explanatory section
 st.markdown("---")
