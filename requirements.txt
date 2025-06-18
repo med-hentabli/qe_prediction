@@ -1,8 +1,9 @@
 numpy==1.26.4
 streamlit
-rdkit-pypi
-pandas
-joblib
+rdkit-pypi==2022.9.5
+pandas==1.5.3
+joblib==1.2.0
 requests
-Pillow
-xgboost==1.7.6
+Pillow==9.5.0
+xgboost==1.6.2
+scikit-learn==1.2.2
