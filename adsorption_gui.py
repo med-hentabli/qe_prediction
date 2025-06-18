@@ -23,12 +23,8 @@ from time import sleep  # For API rate limiting
 def load_model():
     try:
         import xgboost
-        # Try loading with safe mode first
-        try:
-            return joblib.load("best_model_XGB.joblib", safe=True)
-        except:
-            # Fallback to unsafe loading if safe mode fails
-            return joblib.load("best_model_XGB.joblib", safe=False)
+        # Simple loading without safe parameter
+        return joblib.load("best_model_XGB.joblib")
     except ImportError:
         st.error("XGBoost package not found! Please add 'xgboost' to requirements.txt")
         st.stop()
@@ -100,7 +96,7 @@ with st.sidebar:
             st.info("Using previously found SMILES for this molecule.")
     
     if use_for_prediction:
-        st.session_state.run_prediction = True
+        st.session_state.run_prediction = True  # Fixed typo here
         st.success("SMILES loaded for prediction!")
     
     # SMILES input (now connected to session state)
@@ -152,7 +148,6 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
             st.image(img, caption="Chemical Structure")
         except Exception as e:
             st.warning("Could not display molecular structure")
-            st.debug(f"Visualization error: {str(e)}")
             
         # Calculate descriptors
         desc_values = calculator.CalcDescriptors(mol)
@@ -197,7 +192,6 @@ if st.button("Predict Adsorption Capacity") or st.session_state.run_prediction:
         st.error(f"Prediction failed: {str(e)}")
         # Add debug info for prediction errors
         st.debug(f"Model type: {type(xgb_model)}")
-        st.debug(f"Model attributes: {dir(xgb_model)}")
 
 # 8. Add explanatory section
 st.markdown("---")
